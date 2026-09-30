@@ -157,7 +157,7 @@ def solve(target_func_text, constraints_list, optimization_mode='min'):
         current_matrix = current_matrix[:, valid_cols]
         free_vars = [free_vars[idx] for idx in valid_cols]
 
-    #переходим к основной задаче и подставляем целевую функцию
+    #переходим к основной задаче и подставляем функцию
     full_c_vector = np.zeros(all_canon_vars_count)
     full_c_vector[:orig_vars_count] = c_minimized
 
