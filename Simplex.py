@@ -5,8 +5,12 @@ import numpy as np
 def step_compact(matrix, b, c_row, q, basis_vars, free_vars):
     rows_count, cols_count = matrix.shape
 
+    #если свободных переменных нет, выходим
+    if cols_count == 0:
+        return matrix, b, c_row, q, basis_vars, free_vars
+
     #самый большой минус в нижней строке (разрешающий столбец)
-    j_star = np.argmin(c_row)
+    j_star = int(np.argmin(c_row))
 
     #самое маленькое отношение (разрешающая строка)
     ratios = [b[i] / matrix[i, j_star] if matrix[i, j_star] > 0 else np.inf for i in range(rows_count)]
@@ -15,8 +19,8 @@ def step_compact(matrix, b, c_row, q, basis_vars, free_vars):
     if min_ratio == np.inf:
         return (None,) * 6
 
-    i_star = np.argmin(ratios)
-    pivot = matrix[i_star, j_star]
+    i_star = int(np.argmin(ratios))
+    pivot = float(matrix[i_star, j_star])
 
     matrix_new = np.zeros((rows_count, cols_count))
     b_new = np.zeros(rows_count)
@@ -104,17 +108,18 @@ def solve(target_func_text, constraints_list, optimization_mode='min'):
     for i in range(constraints_count):
         matrix_canonical[i, :orig_vars_count] = matrix_rows[i]
 
-    for col_idx, (row_idx, coef) in enumerate(slack_variables):
+    for col_idx in range(len(slack_variables)):
+        row_idx, coef = slack_variables[col_idx]
         matrix_canonical[row_idx, orig_vars_count + col_idx] = coef
 
-    #проверяем, есть ли готовый базис среди исходных переменных
-    basis_vars = [None] * constraints_count
+    #проверяем, есть ли готовый базис среди всех переменных
+    basis_vars = [""] * constraints_count
     used_columns = set()
 
     for i in range(constraints_count):
-        for j in range(orig_vars_count):
-            if j not in used_columns and matrix_canonical[i, j] == 1.0:
-                if all(matrix_canonical[k, j] == 0.0 for k in range(constraints_count) if k != i):
+        for j in range(all_canon_vars_count):
+            if j not in used_columns and abs(matrix_canonical[i, j] - 1.0) < 0:
+                if all(abs(matrix_canonical[k, j]) < 0 for k in range(constraints_count) if k != i):
                     basis_vars[i] = f"x{j + 1}"
                     used_columns.add(j)
                     break
@@ -122,14 +127,14 @@ def solve(target_func_text, constraints_list, optimization_mode='min'):
     #если для строки базиса нет, добавляем туда переменную
     artificial_count = 0
     for i in range(constraints_count):
-        if basis_vars[i] is None:
+        if basis_vars[i] == "":
             artificial_count += 1
             basis_vars[i] = f"x{all_canon_vars_count + artificial_count}"
 
     free_vars = [f"x{j + 1}" for j in range(all_canon_vars_count) if f"x{j + 1}" not in basis_vars]
     free_indices = [int(name[1:]) - 1 for name in free_vars]
 
-    current_matrix = matrix_canonical[:, free_indices].copy()
+    current_matrix = np.array(matrix_canonical[:, free_indices], dtype=float)
     current_b = np.array(b_values, dtype=float)
 
     #решаем вспомогательную задачу
@@ -141,7 +146,7 @@ def solve(target_func_text, constraints_list, optimization_mode='min'):
                 c_row -= current_matrix[i]
                 q -= current_b[i]
 
-        while np.min(c_row) < 0:
+        while len(c_row) > 0 > np.min(c_row):
             current_matrix, current_b, c_row, q, basis_vars, free_vars = step_compact(current_matrix, current_b, c_row, q, basis_vars, free_vars)
 
             if current_matrix is None:
@@ -152,9 +157,37 @@ def solve(target_func_text, constraints_list, optimization_mode='min'):
             print("Решений нет")
             return
 
+        #выталкивание искусственных переменных из базиса
+        rows_to_keep = []
+        for i in range(current_matrix.shape[0]):
+            if int(basis_vars[i][1:]) > all_canon_vars_count:
+                pivot_col = -1
+                for j in range(len(free_vars)):
+                    if int(free_vars[j][1:]) <= all_canon_vars_count and abs(current_matrix[i, j]) > 1e-9:
+                        pivot_col = int(j)
+                        break
+
+                if pivot_col != -1:
+                    pivot = float(current_matrix[i, pivot_col])
+                    current_matrix[i, :] /= pivot
+                    current_b[i] /= pivot
+                    for r in range(current_matrix.shape[0]):
+                        if r != i:
+                            coef = float(current_matrix[r, pivot_col])
+                            current_matrix[r, :] -= coef * current_matrix[i, :]
+                            current_b[r] -= coef * current_b[i]
+                    basis_vars[i] = free_vars[pivot_col]
+                    rows_to_keep.append(i)
+            else:
+                rows_to_keep.append(i)
+
+        current_matrix = np.array(current_matrix[rows_to_keep, :], dtype=float)
+        current_b = np.array(current_b[rows_to_keep], dtype=float)
+        basis_vars = [basis_vars[idx] for idx in rows_to_keep]
+
         #убираем столбцы искусственных переменных
-        valid_cols = [idx for idx, name in enumerate(free_vars) if int(name[1:]) <= all_canon_vars_count]
-        current_matrix = current_matrix[:, valid_cols]
+        valid_cols = [j for j in range(len(free_vars)) if int(free_vars[j][1:]) <= all_canon_vars_count]
+        current_matrix = np.array(current_matrix[:, valid_cols], dtype=float)
         free_vars = [free_vars[idx] for idx in valid_cols]
 
     #переходим к основной задаче и подставляем функцию
@@ -164,35 +197,40 @@ def solve(target_func_text, constraints_list, optimization_mode='min'):
     c_row = np.zeros(len(free_vars))
     q = 0.0
 
-    for j, col_name in enumerate(free_vars):
+    for j in range(len(free_vars)):
+        col_name = free_vars[j]
         var_idx = int(col_name[1:]) - 1
         c_row[j] = full_c_vector[var_idx]
 
-    for i, row_name in enumerate(basis_vars):
+    for i in range(len(basis_vars)):
+        row_name = basis_vars[i]
         var_idx = int(row_name[1:]) - 1
         if var_idx < all_canon_vars_count:
-            coef = full_c_vector[var_idx]
+            coef = float(full_c_vector[var_idx])
             c_row -= coef * current_matrix[i]
             q -= coef * current_b[i]
 
-    while np.min(c_row) < 0:
-        current_matrix, current_b, c_row, q, basis_vars, free_vars = step_compact(current_matrix, current_b, c_row, q, basis_vars, free_vars)
+    if len(free_vars) > 0:
+        while len(c_row) > 0 > np.min(c_row):
+            current_matrix, current_b, c_row, q, basis_vars, free_vars = step_compact(current_matrix, current_b, c_row, q, basis_vars, free_vars)
 
-        if current_matrix is None:
-            print("Область допустимых решений не ограничена")
-            return
+            if current_matrix is None:
+                print("Область допустимых решений не ограничена")
+                return
 
     #выводим значения только для исходных переменных
     solution_dict = {f"x{i + 1}": 0.0 for i in range(orig_vars_count)}
-    for i, name in enumerate(basis_vars):
+    for i in range(len(basis_vars)):
+        name = basis_vars[i]
         if name in solution_dict:
             solution_dict[name] = float(current_b[i])
 
     solution_vector = [solution_dict[f"x{i + 1}"] for i in range(orig_vars_count)]
     optimal_function_value = float(np.dot(c_initial, solution_vector))
 
-    for name, val in solution_dict.items():
-        print(f"  {name} = {round(val, 4)}")
+    for idx in range(len(solution_vector)):
+        val = solution_vector[idx]
+        print(f"  x{idx + 1} = {round(val, 4)}")
     point_string = ", ".join(str(round(val, 4)) for val in solution_vector)
     print(f"Оптимальная точка: x* = ({point_string})")
     print(f"Значение функции:  W(x*) = {round(optimal_function_value, 4)}")
