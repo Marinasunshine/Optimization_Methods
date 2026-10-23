@@ -235,12 +235,36 @@ def solve(target_func_text, constraints_list, optimization_mode='min'):
     print(f"Оптимальная точка: x* = ({point_string})")
     print(f"Значение функции:  W(x*) = {round(optimal_function_value, 4)}")
 
+def get_float_input(prompt):
+    while True:
+        user_input = input(prompt).replace(',', '.')
+        try:
+            return float(user_input)
+        except ValueError:
+            print("Ошибка: пожалуйста, введите число")
 
 if __name__ == "__main__":
-    user_func = input("Коэффициенты целевой функции (например: 2 3 1 4): ")
-    user_mode = input("Направление оптимизации (min или max): ")
+    while True:
+        user_func = input("Коэффициенты целевой функции (например: 2 3 1 4): ")
+        try:
+            [float(x) for x in user_func.split()]
+            if len(user_func.strip()) > 0:
+                break
+        except ValueError:
+            print("Ошибка: все коэффициенты должны быть числами через пробел!")
 
-    constraints_total = int(input("Количество ограничений (например: 3): "))
+    while True:
+        user_mode = input("Направление оптимизации (min или max): ").strip().lower()
+        if user_mode in ['min', 'max']:
+            break
+        print("Ошибка: введите слово 'min' или 'max'!")
+
+    while True:
+        constraints_total = int(get_float_input("Количество ограничений (например: 3): "))
+        if constraints_total > 0:
+            break
+        print("Ошибка: количество ограничений должно быть больше нуля!")
+
     print("Введите ограничения построчно (например: 1 2 1 0 <= 7):")
 
     user_constraints = []
