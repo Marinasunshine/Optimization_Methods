@@ -51,8 +51,9 @@ for number, solution in enumerate(solutions, start=1):
     print(f"допустимость: {'да' if is_admissible else 'нет'}")
     print()
 
-if candidates:
-    best_min = min(candidates, key=lambda c: float(c["value"]))
+admissible_candidates = [c for c in candidates if c["admissible"]]
+if admissible_candidates:
+    best_min = min(admissible_candidates, key=lambda c: float(c["value"]))
     pt_str = f"({best_min['point'][x]}, {best_min['point'][y]}, {best_min['point'][z]})"
 
     param_sol = sp.solve(constraints, [y, z], dict=True)
@@ -71,7 +72,7 @@ if candidates:
             print("глобальный минимум: отсутствует")
 
         if lim_plus_inf == -sp.oo and lim_minus_inf == -sp.oo:
-            best_max = max(candidates, key=lambda c: float(c["value"]))
+            best_max = max(admissible_candidates, key=lambda c: float(c["value"]))
             pt_str_max = f"({best_max['point'][x]}, {best_max['point'][y]}, {best_max['point'][z]})"
             print(f"глобальный максимум: {pt_str_max}, f = {best_max['value']}")
         else:
@@ -85,3 +86,6 @@ if candidates:
             print("  Функция коэрцитивна (уходит в +oo), поэтому существует только глобальный минимум.")
     else:
         print("основание классификации: Не удалось выполнить параметризацию.")
+
+else:
+    print("Допустимых решений, удовлетворяющих ограничениям, не найдено.")

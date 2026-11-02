@@ -118,8 +118,8 @@ def solve(target_func_text, constraints_list, optimization_mode='min'):
 
     for i in range(constraints_count):
         for j in range(all_canon_vars_count):
-            if j not in used_columns and abs(matrix_canonical[i, j] - 1.0) < 0:
-                if all(abs(matrix_canonical[k, j]) < 0 for k in range(constraints_count) if k != i):
+            if j not in used_columns and abs(matrix_canonical[i, j] - 1.0) < 1e-5:
+                if all(abs(matrix_canonical[k, j]) < 1e-5 for k in range(constraints_count) if k != i):
                     basis_vars[i] = f"x{j + 1}"
                     used_columns.add(j)
                     break
@@ -153,37 +153,35 @@ def solve(target_func_text, constraints_list, optimization_mode='min'):
                 print("Область допустимых решений не ограничена")
                 return
 
-        if q != 0:
+        if abs(q) > 1e-5:
             print("Решений нет")
             return
 
         #выталкивание искусственных переменных из базиса
-        rows_to_keep = []
         for i in range(current_matrix.shape[0]):
             if int(basis_vars[i][1:]) > all_canon_vars_count:
-                pivot_col = -1
                 for j in range(len(free_vars)):
-                    if int(free_vars[j][1:]) <= all_canon_vars_count and abs(current_matrix[i, j]) > 1e-9:
-                        pivot_col = int(j)
+                    if int(free_vars[j][1:]) <= all_canon_vars_count and abs(current_matrix[i, j]) > 1e-5:
+                        pivot = current_matrix[i, j]
+                        new_mat = np.zeros_like(current_matrix)
+                        new_mat[i, j] = 1.0 / pivot
+                        for col in range(len(free_vars)):
+                            if col != j:
+                                new_mat[i, col] = current_matrix[i, col] / pivot
+                        current_b[i] /= pivot
+
+                        for row in range(current_matrix.shape[0]):
+                            if row != i:
+                                new_mat[row, j] = -current_matrix[row, j] / pivot
+                                for col in range(len(free_vars)):
+                                    if col != j:
+                                        new_mat[row, col] = current_matrix[row, col] - (
+                                                    current_matrix[i, col] * current_matrix[row, j]) / pivot
+                                current_b[row] -= (current_b[i] * current_matrix[row, j])
+
+                        current_matrix = new_mat
+                        basis_vars[i], free_vars[j] = free_vars[j], basis_vars[i]
                         break
-
-                if pivot_col != -1:
-                    pivot = float(current_matrix[i, pivot_col])
-                    current_matrix[i, :] /= pivot
-                    current_b[i] /= pivot
-                    for r in range(current_matrix.shape[0]):
-                        if r != i:
-                            coef = float(current_matrix[r, pivot_col])
-                            current_matrix[r, :] -= coef * current_matrix[i, :]
-                            current_b[r] -= coef * current_b[i]
-                    basis_vars[i] = free_vars[pivot_col]
-                    rows_to_keep.append(i)
-            else:
-                rows_to_keep.append(i)
-
-        current_matrix = np.array(current_matrix[rows_to_keep, :], dtype=float)
-        current_b = np.array(current_b[rows_to_keep], dtype=float)
-        basis_vars = [basis_vars[idx] for idx in rows_to_keep]
 
         #убираем столбцы искусственных переменных
         valid_cols = [j for j in range(len(free_vars)) if int(free_vars[j][1:]) <= all_canon_vars_count]

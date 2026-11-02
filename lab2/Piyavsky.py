@@ -13,7 +13,7 @@ def calculate_lipschitz(f, a, b, samples=2000):
 
 
 def piyavsky_method(func_str, a, b, eps=0.01, mode='min', max_iter=1000):
-    raw_f = lambda x: eval(func_str, {"x": x, "sin": np.sin, "cos": np.cos, "tan": np.tan, "exp": np.exp, "log": np.log, "sqrt": np.sqrt, "abs": np.abs, "pi": np.pi, "e": np.e})
+    raw_f = lambda x: eval(func_str, {"__builtins__": {}}, {"x": x, "sin": np.sin, "cos": np.cos, "tan": np.tan, "exp": np.exp, "log": np.log, "sqrt": np.sqrt, "abs": np.abs, "pi": np.pi, "e": np.e})
 
     try:
         raw_f(a)
@@ -22,8 +22,9 @@ def piyavsky_method(func_str, a, b, eps=0.01, mode='min', max_iter=1000):
         return
 
     if a == b:
-        print(f"\nГраницы совпадают. Отрезок равен точке.")
-        return a, 0, 0, 0
+        w_val = float(raw_f(a))
+        print(f"\nГраницы совпадают. Отрезок равен точке: x* = {a}, W(x*) = {w_val}")
+        return a, w_val, 0, 0.0, True
 
     if a > b:
         a, b = b, a
@@ -39,12 +40,13 @@ def piyavsky_method(func_str, a, b, eps=0.01, mode='min', max_iter=1000):
     upper_w = [float(f(a)), float(f(b))]
 
     iterations = 0
+    converged = False
+    lipschitz_broken = False
 
     while True:
         iterations += 1
 
         if iterations >= max_iter:
-            print(f"\nДостигнут лимит в {max_iter} итераций")
             break
 
         order = np.argsort(upper_u)
@@ -66,11 +68,31 @@ def piyavsky_method(func_str, a, b, eps=0.01, mode='min', max_iter=1000):
                 best_u = u_cross
 
         new_u = best_u
-        new_w = float(f(new_u))
 
-        delta = abs(new_w - best_p)
+        already_computed = False
+        for idx, u_prev in enumerate(upper_u):
+            if abs(new_u - u_prev) < 1e-9:
+                new_w = upper_w[idx]
+                already_computed = True
+                break
 
-        if delta < eps:
+        if not already_computed:
+            new_w = float(f(new_u))
+
+        if np.isnan(new_w) or np.isinf(new_w):
+            print("\nОшибка: функция ушла в бесконечность или не определена")
+            break
+
+        diff = new_w - best_p
+
+        if diff < -1e-6:
+            lipschitz_broken = True
+            upper_u.append(new_u)
+            upper_w.append(new_w)
+            break
+
+        if diff <= eps:
+            converged = True
             upper_u.append(new_u)
             upper_w.append(new_w)
             break
@@ -84,6 +106,11 @@ def piyavsky_method(func_str, a, b, eps=0.01, mode='min', max_iter=1000):
     x_opt = upper_u[best_idx]
     w_opt = sign * upper_w[best_idx]
 
+    if lipschitz_broken:
+        print("\nФункция оказалась ниже ломаной (константа L занижена, точность не гарантирована)")
+    elif not converged:
+        print(f"\nДостигнут лимит в {max_iter} итераций (точность не гарантирована)")
+
     print(f"\nРежим оптимизации: {mode}")
     print(f"Отрезок: [{a}, {b}]")
     print(f"Константа Липшица L: {round(L, 4)}")
@@ -94,7 +121,7 @@ def piyavsky_method(func_str, a, b, eps=0.01, mode='min', max_iter=1000):
 
     plot_results(raw_f, a, b, upper_u, upper_w, L, x_opt, w_opt, func_str, sign)
 
-    return x_opt, w_opt, iterations, exec_time
+    return x_opt, w_opt, iterations, exec_time, converged
 
 
 def plot_results(f, a, b, upper_u, upper_w, L, x_opt, w_opt, func_str, sign):
